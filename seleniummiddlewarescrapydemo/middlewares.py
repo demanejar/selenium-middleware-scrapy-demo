@@ -8,6 +8,11 @@ from scrapy import signals
 # useful for handling different item types with a single interface
 from itemadapter import is_item, ItemAdapter
 
+import logging
+import undetected_chromedriver as uc
+from scrapy.http import HtmlResponse
+from selenium.webdriver.remote.remote_connection import LOGGER as SELENIUM_LOGGER
+from scrapy import signals
 
 class SeleniummiddlewarescrapydemoSpiderMiddleware:
     # Not all methods need to be defined. If a method is not defined,
@@ -102,3 +107,42 @@ class SeleniummiddlewarescrapydemoDownloaderMiddleware:
     def spider_opened(self, spider):
         spider.logger.info("Spider opened: %s" % spider.name)
 
+class SeleniumBaseMiddleWare(object):
+    @classmethod
+    def from_crawler(cls, crawler):
+        middleware = cls()
+        crawler.signals.connect(middleware.spider_opened, signals.spider_opened)
+        crawler.signals.connect(middleware.spider_closed, signals.spider_closed)
+        return middleware
+
+    def get_chrome_options(self):
+        options = uc.ChromeOptions()
+        return options
+
+    def spider_opened(self, spider):
+        try:
+            options = self.get_chrome_options()
+
+            self.driver = uc.Chrome(
+                options=options,
+                version_main=127
+            )
+        except Exception as e:
+            logging.error(f"Failed to open spider and create driver: {e}")
+            raise
+
+    def process_request(self, request, spider):
+        logging.info('SELENIUM FETCH URL {}'.format(request.url))
+        self.driver.get(request.url)
+
+        request.meta.update({'driver': self.driver})
+        content = self.driver.page_source
+        return HtmlResponse(
+            request.url, encoding="utf-8", body=content, request=request
+        )
+
+    def process_response(self, request, response, spider):
+        return response
+    
+    def spider_closed(self, spider):
+        self.driver.quit()
